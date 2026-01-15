@@ -15,6 +15,9 @@ help_output="$($NOSLEEP --help | strip_ansi)"
 if ! echo "$help_output" | grep -q "nosleep - macOS 防休眠小工具"; then
   fail "help output missing title"
 fi
+if ! echo "$help_output" | grep -q "网络不断"; then
+  fail "help output missing network wording"
+fi
 
 version_output="$($NOSLEEP --version | strip_ansi)"
 if ! echo "$version_output" | grep -q "nosleep version"; then
@@ -29,6 +32,9 @@ done
 
 if ! grep -q "brew install thinkpeace/tap/nosleep" "$ROOT_DIR/README.md"; then
   fail "README missing brew install command"
+fi
+if ! grep -q "系统不休眠" "$ROOT_DIR/README.md"; then
+  fail "README missing system awake wording"
 fi
 
 if [[ ! -f "$ROOT_DIR/.github/workflows/release.yml" ]]; then
