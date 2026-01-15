@@ -1,0 +1,30 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare assets
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          mkdir -p dist
+          cp nosleep "dist/nosleep-${version}"
+          sed -i.bak "s/^VERSION=\".*\"/VERSION=\"${version}\"/" "dist/nosleep-${version}"
+          rm -f "dist/nosleep-${version}.bak"
+          shasum -a 256 "dist/nosleep-${version}" > "dist/nosleep-${version}.sha256"
+
+      - name: Publish Release Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/nosleep-*
