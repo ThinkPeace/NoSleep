@@ -27,6 +27,10 @@ for f in scripts/install.sh scripts/update.sh scripts/uninstall.sh; do
   fi
 done
 
+if ! grep -q "brew install thinkpeace/tap/nosleep" "$ROOT_DIR/README.md"; then
+  fail "README missing brew install command"
+fi
+
 set +e
 run_output="$($NOSLEEP run 2>&1 | strip_ansi)"
 status=$?
