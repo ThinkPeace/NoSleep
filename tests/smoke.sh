@@ -15,6 +15,9 @@ help_output="$($NOSLEEP --help | strip_ansi)"
 if ! echo "$help_output" | grep -q "nosleep - macOS 防休眠小工具"; then
   fail "help output missing title"
 fi
+if ! echo "$help_output" | grep -q "网络不断"; then
+  fail "help output missing network wording"
+fi
 
 version_output="$($NOSLEEP --version | strip_ansi)"
 if ! echo "$version_output" | grep -q "nosleep version"; then
