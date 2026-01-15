@@ -2,6 +2,7 @@
 set -euo pipefail
 
 REPO="ThinkPeace/NoSleep"
+TMPDIR=""
 
 get_install_dir() {
   if [[ -d "/opt/homebrew/bin" ]]; then
@@ -39,6 +40,12 @@ sha256_file() {
   fi
 }
 
+cleanup_tmpdir() {
+  if [[ -n "${TMPDIR:-}" ]]; then
+    rm -rf "$TMPDIR"
+  fi
+}
+
 main() {
   echo "⬇️  正在下载 nosleep..."
 
@@ -62,17 +69,16 @@ main() {
     exit 2
   fi
 
-  local tmpdir
-  tmpdir="$(mktemp -d)"
-  trap 'rm -rf "$tmpdir"' EXIT
+  TMPDIR="$(mktemp -d)"
+  trap cleanup_tmpdir EXIT
 
-  curl -fsSL -o "$tmpdir/$asset_name" "$asset_url"
-  curl -fsSL -o "$tmpdir/$sha_name" "$sha_url"
+  curl -fsSL -o "$TMPDIR/$asset_name" "$asset_url"
+  curl -fsSL -o "$TMPDIR/$sha_name" "$sha_url"
 
   local expected
-  expected="$(awk '{print $1}' "$tmpdir/$sha_name")"
+  expected="$(awk '{print $1}' "$TMPDIR/$sha_name")"
   local actual
-  actual="$(sha256_file "$tmpdir/$asset_name")"
+  actual="$(sha256_file "$TMPDIR/$asset_name")"
   if [[ "$expected" != "$actual" ]]; then
     echo "❌ 校验失败，已中止安装"
     exit 3
@@ -82,9 +88,9 @@ main() {
   target="$(get_install_dir)/nosleep"
 
   if need_sudo "$target"; then
-    sudo install -m 755 "$tmpdir/$asset_name" "$target"
+    sudo install -m 755 "$TMPDIR/$asset_name" "$target"
   else
-    install -m 755 "$tmpdir/$asset_name" "$target"
+    install -m 755 "$TMPDIR/$asset_name" "$target"
   fi
 
   echo "✅ 安装成功！输入 'nosleep --help' 查看用法。"
