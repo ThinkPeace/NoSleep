@@ -11,6 +11,7 @@ A simple macOS no-sleep wrapper around `caffeinate`.
 - 👻 后台模式允许黑屏省电
 - 🚀 命令跟随模式
 - ♻️ 支持升级更新
+- 🔌 默认/定时模式保持系统不休眠、网络不断；bg 允许黑屏但系统不休眠
 
 ## 📦 安装 / Installation
 
