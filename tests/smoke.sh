@@ -35,6 +35,10 @@ if [[ ! -f "$ROOT_DIR/.github/workflows/release.yml" ]]; then
   fail "release workflow missing"
 fi
 
+if [[ ! -f "$ROOT_DIR/homebrew/nosleep.rb" ]]; then
+  fail "homebrew formula template missing"
+fi
+
 set +e
 run_output="$($NOSLEEP run 2>&1 | strip_ansi)"
 status=$?
