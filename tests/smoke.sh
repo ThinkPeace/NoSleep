@@ -56,4 +56,52 @@ if ! echo "$run_output" | grep -q "请指定要运行的命令"; then
   fail "missing error message for 'run' without command"
 fi
 
+stub_dir="$(mktemp -d)"
+trap 'rm -rf "$stub_dir"' EXIT
+
+cat >"$stub_dir/launchctl" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+cmd="${1:-}"
+if [[ "$cmd" == "print" ]]; then
+  exit 1
+fi
+if [[ "$cmd" == "bootout" ]]; then
+  exit 1
+fi
+exit 0
+STUB
+chmod +x "$stub_dir/launchctl"
+
+cat >"$stub_dir/pmset" <<'STUB'
+#!/usr/bin/env bash
+cat <<'OUT'
+Assertion status system-wide:
+   PreventUserIdleSystemSleep 1
+Listed by owning process:
+  pid 9999(SomeApp): [0x00000001] 00:00:10 PreventUserIdleSystemSleep named: "SomeApp"
+OUT
+STUB
+chmod +x "$stub_dir/pmset"
+
+if ! echo "$help_output" | grep -q "status"; then
+  fail "help output missing status command"
+fi
+if ! echo "$help_output" | grep -q "stop"; then
+  fail "help output missing stop command"
+fi
+
+status_output="$(PATH="$stub_dir:$PATH" "$NOSLEEP" status | strip_ansi)"
+if ! echo "$status_output" | grep -q "当前没有"; then
+  fail "status output missing 'no job' message"
+fi
+if ! echo "$status_output" | grep -q "SomeApp"; then
+  fail "status output missing external assertion"
+fi
+
+stop_output="$(PATH="$stub_dir:$PATH" "$NOSLEEP" stop 2>&1 | strip_ansi)"
+if ! echo "$stop_output" | grep -q "没有正在运行"; then
+  fail "stop output missing 'no job' message"
+fi
+
 echo "OK"
