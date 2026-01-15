@@ -31,6 +31,10 @@ if ! grep -q "brew install thinkpeace/tap/nosleep" "$ROOT_DIR/README.md"; then
   fail "README missing brew install command"
 fi
 
+if [[ ! -f "$ROOT_DIR/.github/workflows/release.yml" ]]; then
+  fail "release workflow missing"
+fi
+
 set +e
 run_output="$($NOSLEEP run 2>&1 | strip_ansi)"
 status=$?
