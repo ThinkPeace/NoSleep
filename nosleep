@@ -4,6 +4,8 @@ set -euo pipefail
 VERSION="dev"
 REPO="ThinkPeace/NoSleep"
 TMPDIR=""
+LAUNCHD_LABEL="com.thinkpeace.nosleep"
+LAUNCHD_PLIST="$HOME/Library/LaunchAgents/${LAUNCHD_LABEL}.plist"
 
 BOLD='\033[1m'
 GREEN='\033[0;32m'
@@ -23,16 +25,18 @@ show_help() {
   echo "  默认/定时模式保持系统不休眠，网络不断。"
   echo ""
   echo -e "${BOLD}参数说明:${NC}"
-  echo -e "  ${CYAN}(无参数)${NC}      无限期保持屏幕常亮 (直到按 Ctrl+C 停止)"
-  echo -e "  ${CYAN}<时间>${NC}        指定保持唤醒的时长 (支持 s=秒, m=分, h=时, d=天)"
+  echo -e "  ${CYAN}(无参数)${NC}      默认后台保持清醒 (使用 status 查看，stop 停止)"
+  echo -e "  ${CYAN}<时间>${NC}        指定保持唤醒的时长 (后台运行，支持 s=秒, m=分, h=时, d=天)"
   echo -e "  ${CYAN}bg${NC}            后台模式 (允许屏幕关闭，但系统不休眠、网络不断 - 适合下载/挂机)"
   echo -e "  ${CYAN}run${NC}           运行模式 (在指定命令运行期间保持唤醒)"
+  echo -e "  ${CYAN}status${NC}        查看当前 nosleep 状态与外部阻止休眠的进程"
+  echo -e "  ${CYAN}stop${NC}           停止当前 nosleep (可选: stop <id|pid>)"
   echo -e "  ${CYAN}update${NC}        升级到最新版本"
   echo -e "  ${CYAN}--version${NC}     显示版本号"
   echo -e "  ${CYAN}--help${NC}        显示此帮助信息"
   echo ""
   echo -e "${BOLD}使用示例:${NC}"
-  echo -e "  1. 临时离开，保持屏幕常亮:"
+  echo -e "  1. 后台保持清醒 (可通过 status 查看):"
   echo -e "     ${GREEN}nosleep${NC}"
   echo ""
   echo -e "  2. 保持屏幕亮 1 小时 30 分钟 (以下写法均可):"
@@ -42,7 +46,11 @@ show_help() {
   echo -e "  3. 挂机下载大文件 3 小时 (允许黑屏省电，但不断网):"
   echo -e "     ${GREEN}nosleep bg 3h${NC}"
   echo ""
-  echo -e "  4. 执行备份脚本，备份期间不许休眠:"
+  echo -e "  4. 查看/停止当前任务:"
+  echo -e "     ${GREEN}nosleep status${NC}"
+  echo -e "     ${GREEN}nosleep stop 1${NC}"
+  echo ""
+  echo -e "  5. 执行备份脚本，备份期间不许休眠:"
   echo -e "     ${GREEN}nosleep run ./backup_script.sh${NC}"
   echo ""
 }
@@ -155,12 +163,93 @@ update_self() {
   echo -e "${GREEN}✅ 已升级到版本 ${version}${NC}"
 }
 
+launchd_bootout() {
+  launchctl bootout "gui/$UID/$LAUNCHD_LABEL" >/dev/null 2>&1 || true
+}
+
+launchd_bootstrap() {
+  launchctl bootstrap "gui/$UID" "$LAUNCHD_PLIST" >/dev/null 2>&1
+}
+
+write_plist() {
+  local -a args=("$@")
+  mkdir -p "$(dirname "$LAUNCHD_PLIST")"
+  {
+    cat <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>$LAUNCHD_LABEL</string>
+  <key>ProgramArguments</key>
+  <array>
+EOF
+    printf '    <string>%s</string>\n' "${args[@]}"
+    cat <<EOF
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+</dict>
+</plist>
+EOF
+  } >"$LAUNCHD_PLIST"
+}
+
+start_launchd() {
+  local -a args=("/usr/bin/caffeinate" "$@")
+  write_plist "${args[@]}"
+  launchd_bootout
+  launchd_bootstrap
+}
+
+status_launchd() {
+  if ! launchctl print "gui/$UID/$LAUNCHD_LABEL" >/dev/null 2>&1; then
+    echo -e "${YELLOW}ℹ️  当前没有运行中的 nosleep 任务。${NC}"
+  else
+    local info
+    info="$(launchctl print "gui/$UID/$LAUNCHD_LABEL")"
+    local pid
+    pid="$(echo "$info" | awk -F' = ' '/pid =/{print $2; exit}')"
+    echo -e "${GREEN}✅ nosleep 正在运行${NC}"
+    echo "ID: 1"
+    echo "PID: ${pid:-unknown}"
+    echo "Label: $LAUNCHD_LABEL"
+  fi
+
+  echo ""
+  echo -e "${BOLD}外部阻止休眠的进程:${NC}"
+  pmset -g assertions | sed -n '/Listed by owning process:/,$p'
+}
+
+stop_launchd() {
+  local target="${1:-}"
+  local info
+  if ! info="$(launchctl print "gui/$UID/$LAUNCHD_LABEL" 2>/dev/null)"; then
+    echo -e "${YELLOW}ℹ️  没有正在运行的 nosleep 任务。${NC}"
+    return 0
+  fi
+
+  if [[ -n "$target" ]]; then
+    local pid
+    pid="$(echo "$info" | awk -F' = ' '/pid =/{print $2; exit}')"
+    if [[ "$target" != "1" && -n "$pid" && "$target" != "$pid" ]]; then
+      echo -e "${YELLOW}❌ 未找到对应的 nosleep 任务。${NC}"
+      return 1
+    fi
+  fi
+
+  launchd_bootout
+  rm -f "$LAUNCHD_PLIST"
+  echo -e "${GREEN}✅ 已停止 nosleep。${NC}"
+}
+
 # --- entry ---
 require_macos
 
 if [[ $# -eq 0 ]]; then
-  echo -e "${GREEN}☕️  Mac 将无限期保持清醒 (按 Ctrl+C 退出)...${NC}"
-  caffeinate -d -u -i -s
+  echo -e "${GREEN}☕️  已在后台保持清醒 (使用 'nosleep status' 查看)${NC}"
+  start_launchd -d -u -i -s
   exit 0
 fi
 
@@ -175,6 +264,15 @@ case "$1" in
     ;;
   update)
     update_self
+    exit 0
+    ;;
+  status)
+    status_launchd
+    exit 0
+    ;;
+  stop)
+    shift
+    stop_launchd "${1:-}"
     exit 0
     ;;
   run)
@@ -241,10 +339,10 @@ trap "echo -e '\\n🛑 已手动停止。'; exit" SIGINT
 
 if [[ "${MODE}" == "system" ]]; then
   echo -e "${GREEN}☕️  系统将在后台运行 $READABLE${NC} (允许黑屏)"
-  caffeinate -i -s -t "$SECONDS"
+  start_launchd -i -s -t "$SECONDS"
 else
-  echo -e "${GREEN}☕️  屏幕将常亮 $READABLE${NC} (按 Ctrl+C 提前取消)"
-  caffeinate -d -u -i -s -t "$SECONDS"
+  echo -e "${GREEN}☕️  屏幕将常亮 $READABLE${NC} (后台运行)"
+  start_launchd -d -u -i -s -t "$SECONDS"
 fi
 
 if [[ $? -eq 0 ]]; then
