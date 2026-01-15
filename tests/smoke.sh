@@ -21,6 +21,12 @@ if ! echo "$version_output" | grep -q "nosleep version"; then
   fail "missing version output"
 fi
 
+for f in scripts/install.sh scripts/update.sh scripts/uninstall.sh; do
+  if [[ ! -x "$ROOT_DIR/$f" ]]; then
+    fail "$f not found or not executable"
+  fi
+done
+
 set +e
 run_output="$($NOSLEEP run 2>&1 | strip_ansi)"
 status=$?
