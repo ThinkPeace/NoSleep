@@ -36,6 +36,12 @@ fi
 if ! grep -q "系统不休眠" "$ROOT_DIR/README.md"; then
   fail "README missing system awake wording"
 fi
+if ! grep -q "nosleep status" "$ROOT_DIR/README.md"; then
+  fail "README missing status command"
+fi
+if ! grep -q "nosleep stop" "$ROOT_DIR/README.md"; then
+  fail "README missing stop command"
+fi
 
 if [[ ! -f "$ROOT_DIR/.github/workflows/release.yml" ]]; then
   fail "release workflow missing"

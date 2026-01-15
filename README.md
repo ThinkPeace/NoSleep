@@ -46,5 +46,7 @@ nosleep
 nosleep 90m
 nosleep 1.5h
 nosleep bg 3h
+nosleep status
+nosleep stop 1
 nosleep run ./backup_script.sh
 ```
