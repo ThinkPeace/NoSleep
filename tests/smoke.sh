@@ -16,6 +16,11 @@ if ! echo "$help_output" | grep -q "nosleep - macOS 防休眠小工具"; then
   fail "help output missing title"
 fi
 
+version_output="$($NOSLEEP --version | strip_ansi)"
+if ! echo "$version_output" | grep -q "nosleep version"; then
+  fail "missing version output"
+fi
+
 set +e
 run_output="$($NOSLEEP run 2>&1 | strip_ansi)"
 status=$?
