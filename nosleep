@@ -20,11 +20,12 @@ show_help() {
   echo ""
   echo -e "${BOLD}核心功能:${NC}"
   echo "  防止 macOS 进入睡眠模式。支持倒计时、后台模式和命令跟随。"
+  echo "  默认/定时模式保持系统不休眠，网络不断。"
   echo ""
   echo -e "${BOLD}参数说明:${NC}"
   echo -e "  ${CYAN}(无参数)${NC}      无限期保持屏幕常亮 (直到按 Ctrl+C 停止)"
   echo -e "  ${CYAN}<时间>${NC}        指定保持唤醒的时长 (支持 s=秒, m=分, h=时, d=天)"
-  echo -e "  ${CYAN}bg${NC}            后台模式 (允许屏幕关闭，但系统不休眠 - 适合下载/挂机)"
+  echo -e "  ${CYAN}bg${NC}            后台模式 (允许屏幕关闭，但系统不休眠、网络不断 - 适合下载/挂机)"
   echo -e "  ${CYAN}run${NC}           运行模式 (在指定命令运行期间保持唤醒)"
   echo -e "  ${CYAN}update${NC}        升级到最新版本"
   echo -e "  ${CYAN}--version${NC}     显示版本号"
@@ -159,7 +160,7 @@ require_macos
 
 if [[ $# -eq 0 ]]; then
   echo -e "${GREEN}☕️  Mac 将无限期保持清醒 (按 Ctrl+C 退出)...${NC}"
-  caffeinate -d -u -i
+  caffeinate -d -u -i -s
   exit 0
 fi
 
@@ -184,7 +185,7 @@ case "$1" in
       exit 1
     fi
     echo -e "${GREEN}☕️  正在运行命令并保持清醒:${NC} $*"
-    caffeinate -d -i "$@"
+    caffeinate -d -i -s "$@"
     exit $?
     ;;
   bg)
@@ -240,10 +241,10 @@ trap "echo -e '\\n🛑 已手动停止。'; exit" SIGINT
 
 if [[ "${MODE}" == "system" ]]; then
   echo -e "${GREEN}☕️  系统将在后台运行 $READABLE${NC} (允许黑屏)"
-  caffeinate -i -t "$SECONDS"
+  caffeinate -i -s -t "$SECONDS"
 else
   echo -e "${GREEN}☕️  屏幕将常亮 $READABLE${NC} (按 Ctrl+C 提前取消)"
-  caffeinate -d -u -t "$SECONDS"
+  caffeinate -d -u -i -s -t "$SECONDS"
 fi
 
 if [[ $? -eq 0 ]]; then
