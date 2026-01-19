@@ -66,8 +66,10 @@ stub_dir="$(mktemp -d)"
 stub_dir_running="$(mktemp -d)"
 stub_dir_infinite="$(mktemp -d)"
 stub_dir_timed="$(mktemp -d)"
+stub_dir_exited="$(mktemp -d)"
 stub_home="$(mktemp -d)"
-trap 'rm -rf "$stub_dir" "$stub_dir_running" "$stub_dir_infinite" "$stub_dir_timed" "$stub_home"' EXIT
+stub_home_exited="$(mktemp -d)"
+trap 'rm -rf "$stub_dir" "$stub_dir_running" "$stub_dir_infinite" "$stub_dir_timed" "$stub_dir_exited" "$stub_home" "$stub_home_exited"' EXIT
 
 cat >"$stub_dir/launchctl" <<'STUB'
 #!/usr/bin/env bash
@@ -143,6 +145,20 @@ exit 0
 STUB
 chmod +x "$stub_dir_timed/launchctl"
 
+cat >"$stub_dir_exited/launchctl" <<'STUB'
+#!/usr/bin/env bash
+if [[ "$1" == "print" ]]; then
+  cat <<'OUT'
+state = not running
+job state = exited
+last exit code = 0
+OUT
+  exit 0
+fi
+exit 0
+STUB
+chmod +x "$stub_dir_exited/launchctl"
+
 if ! echo "$help_output" | grep -q "status"; then
   fail "help output missing status command"
 fi
@@ -174,6 +190,17 @@ fi
 timed_output="$(HOME="$stub_home" PATH="$stub_dir_timed:$PATH" "$NOSLEEP" 1s | strip_ansi)"
 if echo "$timed_output" | grep -q "时间到"; then
   fail "timed output should not include finish message"
+fi
+
+mkdir -p "$stub_home_exited/Library/LaunchAgents"
+exited_plist="$stub_home_exited/Library/LaunchAgents/com.thinkpeace.nosleep.plist"
+: > "$exited_plist"
+status_output_exited="$(HOME="$stub_home_exited" PATH="$stub_dir_exited:$PATH" "$NOSLEEP" status | strip_ansi)"
+if ! echo "$status_output_exited" | grep -q "当前没有运行中的 nosleep 任务"; then
+  fail "status output missing exited cleanup message"
+fi
+if [[ -f "$exited_plist" ]]; then
+  fail "exited plist should be removed"
 fi
 
 stop_output="$(PATH="$stub_dir:$PATH" "$NOSLEEP" stop 2>&1 | strip_ansi)"
