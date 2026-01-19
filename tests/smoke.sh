@@ -105,7 +105,7 @@ if [[ "$*" == *"-o args="* ]]; then
   exit 0
 fi
 if [[ "$*" == *"-o etime="* ]]; then
-  echo "00:00:05"
+  echo "00:08"
   exit 0
 fi
 exit 0
@@ -178,7 +178,7 @@ status_output_running="$(PATH="$stub_dir_running:$PATH" "$NOSLEEP" status | stri
 if ! echo "$status_output_running" | grep -q "✅ nosleep 正在运行"; then
   fail "status output missing running message"
 fi
-if ! echo "$status_output_running" | grep -q "剩余时间: 00:00:25"; then
+if ! echo "$status_output_running" | grep -q "剩余时间: 00:00:22"; then
   fail "status output missing remaining time"
 fi
 
