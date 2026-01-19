@@ -29,7 +29,7 @@ show_help() {
   echo -e "  ${CYAN}<时间>${NC}        指定保持唤醒的时长 (后台运行，支持 s=秒, m=分, h=时, d=天)"
   echo -e "  ${CYAN}bg${NC}            后台模式 (允许屏幕关闭，但系统不休眠、网络不断 - 适合下载/挂机)"
   echo -e "  ${CYAN}run${NC}           运行模式 (在指定命令运行期间保持唤醒)"
-  echo -e "  ${CYAN}status${NC}        查看当前 nosleep 状态与外部阻止休眠的进程"
+  echo -e "  ${CYAN}status${NC}        查看当前 nosleep 状态与剩余时间"
   echo -e "  ${CYAN}stop${NC}           停止当前 nosleep (可选: stop <id|pid>)"
   echo -e "  ${CYAN}update${NC}        升级到最新版本"
   echo -e "  ${CYAN}--version${NC}     显示版本号"
@@ -203,9 +203,41 @@ start_launchd() {
   launchd_bootstrap
 }
 
+parse_etime_seconds() {
+  local etime="$1"
+  local days=0 hours=0 mins=0 secs=0
+
+  if [[ "$etime" =~ ^([0-9]+)-([0-9]{1,2}):([0-9]{2}):([0-9]{2})$ ]]; then
+    days="${BASH_REMATCH[1]}"
+    hours="${BASH_REMATCH[2]}"
+    mins="${BASH_REMATCH[3]}"
+    secs="${BASH_REMATCH[4]}"
+  elif [[ "$etime" =~ ^([0-9]{1,2}):([0-9]{2}):([0-9]{2})$ ]]; then
+    hours="${BASH_REMATCH[1]}"
+    mins="${BASH_REMATCH[2]}"
+    secs="${BASH_REMATCH[3]}"
+  elif [[ "$etime" =~ ^([0-9]{1,2}):([0-9]{2})$ ]]; then
+    mins="${BASH_REMATCH[1]}"
+    secs="${BASH_REMATCH[2]}"
+  else
+    return 1
+  fi
+
+  echo $((days * 86400 + hours * 3600 + mins * 60 + secs))
+}
+
+format_hhmmss() {
+  local total="$1"
+  local hours=$((total / 3600))
+  local mins=$(((total % 3600) / 60))
+  local secs=$((total % 60))
+  printf "%02d:%02d:%02d" "$hours" "$mins" "$secs"
+}
+
 status_launchd() {
   if ! launchctl print "gui/$UID/$LAUNCHD_LABEL" >/dev/null 2>&1; then
     echo -e "${YELLOW}ℹ️  当前没有运行中的 nosleep 任务。${NC}"
+    return 0
   else
     local info
     info="$(launchctl print "gui/$UID/$LAUNCHD_LABEL")"
@@ -215,11 +247,33 @@ status_launchd() {
     echo "ID: 1"
     echo "PID: ${pid:-unknown}"
     echo "Label: $LAUNCHD_LABEL"
-  fi
 
-  echo ""
-  echo -e "${BOLD}外部阻止休眠的进程:${NC}"
-  pmset -g assertions | sed -n '/Listed by owning process:/,$p'
+    local remaining_text="未知"
+    if [[ -n "${pid:-}" ]]; then
+      local args
+      args="$(ps -p "$pid" -o args= 2>/dev/null | awk '{$1=$1;print}')"
+      if [[ -n "$args" ]]; then
+        if [[ "$args" =~ -t[[:space:]]+([0-9]+) ]]; then
+          local total="${BASH_REMATCH[1]}"
+          local elapsed
+          elapsed="$(ps -p "$pid" -o etime= 2>/dev/null | awk '{$1=$1;print}')"
+          local elapsed_seconds
+          if elapsed_seconds="$(parse_etime_seconds "$elapsed")"; then
+            local remaining=$((total - elapsed_seconds))
+            if [[ "$remaining" -lt 0 ]]; then
+              remaining=0
+            fi
+            remaining_text="$(format_hhmmss "$remaining")"
+          else
+            remaining_text="未知"
+          fi
+        else
+          remaining_text="∞"
+        fi
+      fi
+    fi
+    echo "剩余时间: $remaining_text"
+  fi
 }
 
 stop_launchd() {
@@ -343,8 +397,4 @@ if [[ "${MODE}" == "system" ]]; then
 else
   echo -e "${GREEN}☕️  屏幕将常亮 $READABLE${NC} (后台运行)"
   start_launchd -d -u -i -s -t "$SECONDS"
-fi
-
-if [[ $? -eq 0 ]]; then
-  echo -e "${CYAN}😴 时间到，恢复正常休眠策略。${NC}"
 fi
