@@ -63,7 +63,11 @@ if ! echo "$run_output" | grep -q "请指定要运行的命令"; then
 fi
 
 stub_dir="$(mktemp -d)"
-trap 'rm -rf "$stub_dir"' EXIT
+stub_dir_running="$(mktemp -d)"
+stub_dir_infinite="$(mktemp -d)"
+stub_dir_timed="$(mktemp -d)"
+stub_home="$(mktemp -d)"
+trap 'rm -rf "$stub_dir" "$stub_dir_running" "$stub_dir_infinite" "$stub_dir_timed" "$stub_home"' EXIT
 
 cat >"$stub_dir/launchctl" <<'STUB'
 #!/usr/bin/env bash
@@ -79,16 +83,65 @@ exit 0
 STUB
 chmod +x "$stub_dir/launchctl"
 
-cat >"$stub_dir/pmset" <<'STUB'
+cat >"$stub_dir_running/launchctl" <<'STUB'
 #!/usr/bin/env bash
-cat <<'OUT'
-Assertion status system-wide:
-   PreventUserIdleSystemSleep 1
-Listed by owning process:
-  pid 9999(SomeApp): [0x00000001] 00:00:10 PreventUserIdleSystemSleep named: "SomeApp"
+if [[ "$1" == "print" ]]; then
+  cat <<'OUT'
+state = running
+pid = 4321
 OUT
+  exit 0
+fi
+exit 0
 STUB
-chmod +x "$stub_dir/pmset"
+chmod +x "$stub_dir_running/launchctl"
+
+cat >"$stub_dir_running/ps" <<'STUB'
+#!/usr/bin/env bash
+if [[ "$*" == *"-o args="* ]]; then
+  echo "/usr/bin/caffeinate -d -u -i -s -t 30"
+  exit 0
+fi
+if [[ "$*" == *"-o etime="* ]]; then
+  echo "00:00:05"
+  exit 0
+fi
+exit 0
+STUB
+chmod +x "$stub_dir_running/ps"
+
+cat >"$stub_dir_infinite/launchctl" <<'STUB'
+#!/usr/bin/env bash
+if [[ "$1" == "print" ]]; then
+  cat <<'OUT'
+state = running
+pid = 9876
+OUT
+  exit 0
+fi
+exit 0
+STUB
+chmod +x "$stub_dir_infinite/launchctl"
+
+cat >"$stub_dir_infinite/ps" <<'STUB'
+#!/usr/bin/env bash
+if [[ "$*" == *"-o args="* ]]; then
+  echo "/usr/bin/caffeinate -d -u -i -s"
+  exit 0
+fi
+if [[ "$*" == *"-o etime="* ]]; then
+  echo "00:10"
+  exit 0
+fi
+exit 0
+STUB
+chmod +x "$stub_dir_infinite/ps"
+
+cat >"$stub_dir_timed/launchctl" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+chmod +x "$stub_dir_timed/launchctl"
 
 if ! echo "$help_output" | grep -q "status"; then
   fail "help output missing status command"
@@ -97,12 +150,30 @@ if ! echo "$help_output" | grep -q "stop"; then
   fail "help output missing stop command"
 fi
 
-status_output="$(PATH="$stub_dir:$PATH" "$NOSLEEP" status | strip_ansi)"
-if ! echo "$status_output" | grep -q "当前没有"; then
+status_output_no_job="$(PATH="$stub_dir:$PATH" "$NOSLEEP" status | strip_ansi)"
+if ! echo "$status_output_no_job" | grep -q "当前没有"; then
   fail "status output missing 'no job' message"
 fi
-if ! echo "$status_output" | grep -q "SomeApp"; then
-  fail "status output missing external assertion"
+if echo "$status_output_no_job" | grep -q "外部阻止休眠"; then
+  fail "status output should not include external assertions"
+fi
+
+status_output_running="$(PATH="$stub_dir_running:$PATH" "$NOSLEEP" status | strip_ansi)"
+if ! echo "$status_output_running" | grep -q "✅ nosleep 正在运行"; then
+  fail "status output missing running message"
+fi
+if ! echo "$status_output_running" | grep -q "剩余时间: 00:00:25"; then
+  fail "status output missing remaining time"
+fi
+
+status_output_infinite="$(PATH="$stub_dir_infinite:$PATH" "$NOSLEEP" status | strip_ansi)"
+if ! echo "$status_output_infinite" | grep -q "剩余时间: ∞"; then
+  fail "status output missing infinite remaining time"
+fi
+
+timed_output="$(HOME="$stub_home" PATH="$stub_dir_timed:$PATH" "$NOSLEEP" 1s | strip_ansi)"
+if echo "$timed_output" | grep -q "时间到"; then
+  fail "timed output should not include finish message"
 fi
 
 stop_output="$(PATH="$stub_dir:$PATH" "$NOSLEEP" stop 2>&1 | strip_ansi)"
