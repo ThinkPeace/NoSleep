@@ -241,8 +241,16 @@ status_launchd() {
   else
     local info
     info="$(launchctl print "gui/$UID/$LAUNCHD_LABEL")"
+    local state
+    state="$(echo "$info" | awk -F' = ' '/^[[:space:]]*state =/{print $2; exit}')"
     local pid
     pid="$(echo "$info" | awk -F' = ' '/pid =/{print $2; exit}')"
+    if [[ -z "${pid:-}" || "${state:-}" != "running" ]]; then
+      launchd_bootout
+      rm -f "$LAUNCHD_PLIST"
+      echo -e "${YELLOW}ℹ️  当前没有运行中的 nosleep 任务。${NC}"
+      return 0
+    fi
     echo -e "${GREEN}✅ nosleep 正在运行${NC}"
     echo "ID: 1"
     echo "PID: ${pid:-unknown}"
