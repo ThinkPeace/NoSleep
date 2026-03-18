@@ -5,6 +5,8 @@
 
 A simple macOS no-sleep wrapper around `caffeinate`.
 
+[访问官网/ Visit the official site ](https://restless-code-ninjas.mynocode.host/)
+
 ## ✨ 特点 / Features
 - 🇨🇳 全中文提示，直观易懂
 - ⏱ 支持 s/m/h/d 以及小数时间
